@@ -8,9 +8,19 @@ sayHello(SendPort sendPort) async{
   var port = new ReceivePort();
   sendPort.send(port.sendPort);
 
-  String name = await port.first;
-  sendPort.send('hello $name');
-  port.close();
+  await for(var data in port) {
+    var msg = data[0];
+    SendPort replyPort = data[1];
+    replyPort.send("hello $msg");
+    port.close();
+  }
+
+}
+
+Future sendReceive(SendPort port, msg) {
+  ReceivePort response = new ReceivePort();
+  port.send([msg, response.sendPort]);
+  return response.first;
 }
 
 main(List<String> args) async {
@@ -22,20 +32,11 @@ main(List<String> args) async {
       var str = String.fromCharCodes(data);
       var map = json.decode(str);
       if (map['method'] == 'sayHello') {
-
         var receivePort = new ReceivePort();
         await Isolate.spawn(sayHello, receivePort.sendPort);
-        SendPort sendPort;
-        var isFirst = true;
-        receivePort.listen((data){
-          if (isFirst) {
-            sendPort = data;
-            isFirst = false;
-            sendPort.send(map['param']);
-            return;
-          }
-          socket.writeln('{"msg": "$data"}');
-        });
+        SendPort sendPort = await receivePort.first;
+        var data = await sendReceive(sendPort, map['param']);
+        socket.writeln('{"msg": "$data"}');
       }
     });
 
